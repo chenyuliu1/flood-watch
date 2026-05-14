@@ -5,108 +5,325 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Maribyrnong Flood Watch</title>
 <link rel="stylesheet" href="./styles.css">
+<style>
+  /* === v4 Compact Dashboard === */
+  .top-bar { display: flex; gap: 10px; margin-bottom: 10px; align-items: stretch; }
+  .top-bar .risk-box { 
+    min-width: 120px; text-align: center; padding: 10px 16px;
+    border: 2px solid #ccc; display: flex; flex-direction: column; justify-content: center;
+  }
+  .risk-box .big-level { font-size: 24px; font-weight: bold; }
+  .risk-box .risk-sub { font-size: 10px; color: #666; margin-top: 2px; }
+  .agency-cards { display: flex; gap: 8px; flex: 1; }
+  .agency-card { 
+    flex: 1; border: 1px solid #ccc; padding: 8px; border-top: 3px solid #2563eb;
+  }
+  .agency-card .ag-name { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+  .agency-card .ag-val { font-size: 18px; font-weight: bold; margin: 2px 0; }
+  .agency-card .ag-detail { font-size: 10px; color: #999; }
+  .agency-card:nth-child(1) { border-top-color: #2563eb; }
+  .agency-card:nth-child(2) { border-top-color: #0891b2; }
+  .agency-card:nth-child(3) { border-top-color: #d97706; }
+  .agency-card:nth-child(4) { border-top-color: #7c3aed; }
+
+  .main-row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .chart-col { flex: 1; }
+  .chart-container { height: 220px; }
+
+  .map-row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .map-col { flex: 2; }
+  .priority-col { flex: 1; }
+  .big-map { height: 320px; border: 1px dashed #ccc; color: #aaa; display: flex; align-items: center; justify-content: center; text-align: center; }
+
+  .priority-list { display: flex; flex-direction: column; gap: 4px; }
+  .pri-item {
+    padding: 8px 10px; border: 1px solid #ddd; cursor: pointer;
+    transition: background 0.15s; font-size: 12px;
+  }
+  .pri-item:hover { background: #f5f5f5; }
+  .pri-item .pri-name { font-weight: bold; font-size: 13px; }
+  .pri-item .pri-score { float: right; }
+  .pri-item .pri-concern { color: #666; font-size: 11px; margin-top: 2px; }
+
+  .bottom-row { display: flex; gap: 12px; margin-bottom: 12px; }
+
+  /* Report panel */
+  .report-panel { border: 1px solid #ddd; padding: 12px; }
+  .report-panel h2 { font-size: 14px; margin: 0 0 8px; }
+  .report-item { font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f0f0f0; }
+  .report-item:last-child { border-bottom: none; }
+  .report-tag { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 2px; color: #fff; margin-right: 4px; }
+  .report-tag.council { background: #d97706; }
+  .report-tag.melb-water { background: #2563eb; }
+  .report-tag.ses { background: #dc2626; }
+  .report-tag.bom { background: #0891b2; }
+  .report-btn {
+    margin-top: 8px; padding: 6px 12px; font-size: 12px;
+    background: #f0f0f0; border: 1px solid #ccc; cursor: pointer; border-radius: 4px;
+  }
+  .report-btn:hover { background: #e0e0e0; }
+
+  /* Modal */
+  .modal-overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center; }
+  .modal-overlay.active { display:flex; }
+  .modal-content { background:#fff; border-radius:8px; padding:24px; width:560px; max-width:90vw; max-height:85vh; overflow-y:auto; position:relative; }
+  .modal-close { position:absolute; top:12px; right:16px; font-size:20px; cursor:pointer; color:#999; background:none; border:none; }
+  .modal-close:hover { color:#333; }
+  .modal-title { font-size:18px; font-weight:bold; margin-bottom:4px; }
+  .modal-subtitle { font-size:12px; color:#666; margin-bottom:16px; }
+  .modal-chart-container { width:100%; height:280px; display:flex; justify-content:center; }
+  .modal-chart-container canvas { max-width:280px; }
+  .modal-legend { margin-top:12px; }
+  .modal-legend-item { display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; padding:6px 8px; background:#f9f9f9; border-radius:4px; }
+  .modal-legend-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; margin-top:3px; }
+  .modal-legend-text { font-size:11px; }
+  .modal-legend-text .factor-name { font-weight:bold; }
+  .modal-legend-text .relative-note { color:#e65100; font-size:10px; }
+
+  .section-label { font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .data-sources-tag { display:inline-block; font-size:9px; background:#f0f0f0; padding:1px 5px; border-radius:3px; color:#888; margin-right:3px; }
+</style>
 </head>
 <body>
 
 <h1>Maribyrnong Flood Watch</h1>
-<p class="subtitle">layout draft</p>
 
-<div class="row">
-  <div class="section">
-    <h2>Sensor Reading</h2>
-    <p>
-      Water Level: <strong>2.1 m</strong><br>
-      Rate of Rise: 0.3 m/hr<br>
-      Last Updated: 14:02
-    </p>
-    <p class="note">source: Jackie's Arduino water level sensor<br>
-    data format: water_level, timestamp, lat, lng</p>
+<div class="top-bar">
+  <div class="risk-box">
+    <div id="riskLevel" class="big-level status-normal">—</div>
+    <div class="risk-sub" id="riskReasons"></div>
   </div>
-  <div class="section">
-    <h2>Risk Level</h2>
-    <p class="status-warning">WARNING</p>
-    <p>
-      Threshold: 1.5m (warning) / 3.0m (danger)<br>
-      Time to danger: ~3 hrs at current rate
-    </p>
-    <p class="note">calculated from water level + rate of rise</p>
-  </div>
-  <div class="section">
-    <h2>Activity Log</h2>
-    <p>
-      14:02 - sensor reading received<br>
-      14:02 - WARNING threshold crossed<br>
-      14:02 - CALD alerts dispatched<br>
-      14:00 - reading received (1.9m)<br>
-      13:58 - reading received (1.7m)
-    </p>
-  </div>
-</div>
-
-<div class="section">
-  <h2>Sensor Data Chart</h2>
-  <div class="file-upload">
-    <label for="fileInput">Upload sensor data (.xlsx):</label><br>
-    <input id="fileInput" type="file" accept=".xlsx">
-  </div>
-  <p id="statusMessage" class="status-msg">No file loaded yet.</p>
-  <div class="chart-container">
-    <canvas id="sensorChart"></canvas>
-  </div>
-  <p class="note">integrated from Selini's chart viewer.</p>
-</div>
-
-<div class="row">
-  <div class="section" style="flex:2">
-    <h2>Flood Map</h2>
-    <div style="color:#aaa; height:140px; display:flex; align-items:center; justify-content:center; border:1px dashed #ccc;">
-      [Adi's Leaflet map]<br>
-      sensor point colour-coded by status<br>
-      green / yellow / red
+  <div class="agency-cards">
+    <div class="agency-card">
+      <p class="ag-name" style="font-size:12px;font-weight:bold;">Melbourne Water</p>
+      <p class="ag-val" id="currentWaterLevel">— m</p>
+      
     </div>
-    <p class="note">Leaflet.js map</p>
-  </div>
-  <div class="section" style="flex:1">
-    <h2>Community Alerts (CALD)</h2>
-    <div class="alert-box">
-      <strong>EN:</strong> Flood warning for Maribyrnong. Water level rising. Move vehicles from low areas. Prepare to evacuate if advised.
+    <div class="agency-card">
+      <p class="ag-name" style="font-size:12px;font-weight:bold;">Bureau of Meteorology</p>
+      <p class="ag-val" id="currentRainfall">— mm</p>
+      
     </div>
-    <div class="alert-box">
-      <strong>中文:</strong> Maribyrnong洪水预警。水位正在上升。请将低洼区域的车辆移走。如接到通知请准备撤离。
+    <div class="agency-card">
+      <p class="ag-name" style="font-size:12px;font-weight:bold;">Council / Data Vic</p>
+      <p class="ag-val" id="floodZoneCount">—</p>
+      
     </div>
-    <div class="alert-box">
-      <strong>VI:</strong> Canh bao lu tai Maribyrnong. Muc nuoc dang tang. Di chuyen xe khoi vung thap. San sang so tan khi co thong bao.
+    <div class="agency-card">
+      <p class="ag-name" style="font-size:12px;font-weight:bold;">ABS Census</p>
+      <p class="ag-val" id="caldPopulation">—</p>
+      
     </div>
   </div>
 </div>
 
 <div class="section">
-  <h2>Agency Coordination</h2>
-  <p>Melbourne Water / Maribyrnong Council / SES / Victoria Police</p>
-  <p>All agencies notified at the same time when threshold crossed.</p>
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h2 style="margin:0;">Real-time Sensor Data</h2>
+    <div>
+      <button type="button" id="btnSerialConnect" style="font-size:11px;padding:3px 8px;">Connect Arduino</button>
+      <button type="button" id="btnSerialDisconnect" disabled style="font-size:11px;padding:3px 8px;">Disconnect</button>
+      <button type="button" id="btnSimulate" style="font-size:11px;padding:3px 8px;background:#e8f5e9;border:1px solid #4caf50;">▶ Simulate</button>
+      <button type="button" id="btnSimStop" disabled style="font-size:11px;padding:3px 8px;background:#fbe9e7;border:1px solid #e53935;">⏹ Stop</button>
+      <button type="button" id="btnSerialClear" style="font-size:11px;padding:3px 8px;">Clear</button>
+    </div>
+  </div>
+  
+  <div class="serial-stats" style="margin-top:6px;">
+    <div class="serial-stat"><span class="serial-stat-label">Status</span> <strong id="serialConnStatus">Disconnected</strong></div>
+    <div class="serial-stat"><span class="serial-stat-label">Latest</span> <strong id="serialLatestValue">—</strong></div>
+    <div class="serial-stat"><span class="serial-stat-label">Count</span> <strong id="serialSampleCount">0</strong></div>
+    <div class="serial-stat"><span class="serial-stat-label">Invalid</span> <strong id="serialInvalidCount">0</strong></div>
+    <div class="serial-stat"><span class="serial-stat-label">Flask</span> <strong id="flaskStatus">checking</strong></div>
+  </div>
+  <p id="serialErrorLine" class="status-msg error hidden" aria-live="polite"></p>
+  <div class="chart-container"><canvas id="sensorChart"></canvas></div>
 </div>
 
-<div class="section">
-  <h2>Community Nodes</h2>
-  <table>
-    <tr>
-      <th>Area</th><th>Contact</th><th>Languages</th><th>Households</th><th>Status</th>
-    </tr>
-    <tr>
-      <td>Maribyrnong Reserve</td><td>Node Leader A</td><td>Vietnamese, English</td><td>85</td><td>Active</td>
-    </tr>
-    <tr>
-      <td>Raleigh Rd area</td><td>Node Leader B</td><td>Chinese, English</td><td>120</td><td>Active</td>
-    </tr>
-    <tr>
-      <td>River St precinct</td><td>Node Leader C</td><td>Arabic, English</td><td>65</td><td>Active</td>
-    </tr>
-  </table>
-  <p class="note">volunteer-based network. each node responsible for relaying alerts in local language.</p>
+<div class="map-row">
+  <div class="map-col section">
+    <h2>Flood Risk Map</h2>
+    <div class="big-map">
+      [Adi's Leaflet map]<br>Areas colour-coded by risk<br>
+      <em style="font-size:10px;">Elevation + flood zones + sensor + population density</em>
+    </div>
+  </div>
+  <div class="priority-col section">
+    <h2>Priority</h2>
+    <div id="areaCards" class="priority-list">
+      <p style="color:#aaa; font-size:12px;">Loading...</p>
+    </div>
+  </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<div class="bottom-row">
+  <div class="report-panel" style="flex:3;">
+    <h2>Preparedness Report</h2>
+    <div id="reportContent"></div>
+    <div style="margin-top:8px;display:flex;gap:6px;">
+      <button class="report-btn" id="btnReport">View full report</button>
+      <button class="report-btn" onclick="window.location.href='http://localhost:5001/download_csv'">Export CSV</button>
+    </div>
+  </div>
+  <div class="report-panel" style="flex:2;">
+    <h2>Data Archive</h2>
+    <div id="historyDates" style="max-height:160px;overflow-y:auto;font-size:12px;"></div>
+  </div>
+</div>
+
+<div style="text-align:center; padding:8px; font-size:9px; color:#ccc;">
+  Data sources: <span id="dataSourceTags"></span>
+</div>
+
+<div class="modal-overlay" id="areaModal">
+  <div class="modal-content">
+    <button class="modal-close" id="modalClose">&times;</button>
+    <div class="modal-title" id="modalTitle"></div>
+    <div class="modal-subtitle" id="modalSubtitle"></div>
+    <div class="modal-chart-container"><canvas id="modalChart"></canvas></div>
+    <div class="modal-legend" id="modalLegend"></div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="./app.js"></script>
+<script>
+var allAreaData = null;
+var modalChartInstance = null;
+var FACTOR_COLORS = {
+  'flood_history':       { bg:'#ef4444', label:'Flood History' },
+  'drainage':            { bg:'#f97316', label:'Poor Drainage' },
+  'water_proximity':     { bg:'#eab308', label:'Water Proximity' },
+  'rainfall':            { bg:'#0891b2', label:'Rainfall' },
+  'cald_vulnerability':  { bg:'#7c3aed', label:'CALD Vulnerability' },
+  'current_water_level': { bg:'#2563eb', label:'Current Water Level' }
+};
+var AGENCY_MAP = {
+  'drainage':            { name:'Council', cls:'council', dept:'Infrastructure Maintenance' },
+  'flood_history':       { name:'Melbourne Water', cls:'melb-water', dept:'Flood Risk Assessment' },
+  'water_proximity':     { name:'Melbourne Water', cls:'melb-water', dept:'Catchment Management' },
+  'rainfall':            { name:'BOM', cls:'bom', dept:'Weather Forecasting' },
+  'cald_vulnerability':  { name:'SES', cls:'ses', dept:'Community Engagement' },
+  'current_water_level': { name:'Melbourne Water', cls:'melb-water', dept:'Real-time Monitoring' }
+};
+
+function fetchAreaRisk() {
+  fetch("http://localhost:5001/risk_by_area")
+    .then(function(r){return r.json();})
+    .then(function(data) {
+      allAreaData = data;
+      var c = document.getElementById("areaCards");
+      if (!c||!data.areas) return;
+      c.innerHTML = "";
+      var srcTags = document.getElementById("dataSourceTags");
+      if (srcTags) srcTags.innerHTML = data.data_sources.map(function(s){return '<span class="data-sources-tag">'+s+'</span>';}).join("");
+      var elZ = document.getElementById("floodZoneCount");
+      if (elZ) elZ.textContent = data.areas.length+" zones";
+      var tp=0; data.areas.forEach(function(z){tp+=z.population||0;});
+      var elC = document.getElementById("caldPopulation");
+      if (elC) elC.textContent = tp.toLocaleString();
+
+      data.areas.forEach(function(area,idx) {
+        var item = document.createElement("div");
+        item.className = "pri-item";
+        item.addEventListener("click", function(){openAreaModal(idx);});
+        var lc = area.level==="DANGER"?"status-danger":(area.level==="WARNING"?"status-warning":"status-normal");
+        item.innerHTML = '<div><span class="pri-name">'+area.area+'</span><span class="pri-score '+lc+'">'+area.overall_score+'</span></div>'+
+          '<div class="pri-concern">⚠ '+area.top_concern.factor+'</div>';
+        c.appendChild(item);
+      });
+
+      buildReport(data);
+    }).catch(function(){});
+}
+
+function buildReport(data) {
+  var rc = document.getElementById("reportContent");
+  if (!rc || !data.areas) return;
+  var html = "";
+  data.areas.forEach(function(area) {
+    var issues = [];
+    for (var key in area.all_factors) {
+      var f = area.all_factors[key];
+      if (f.score >= 60) {
+        var ag = AGENCY_MAP[key] || {name:'TBD',cls:'council'};
+        var info = FACTOR_COLORS[key]||{label:key};
+        issues.push('<span class="report-tag '+ag.cls+'">'+ag.name+'</span> '+info.label);
+      }
+    }
+    if (issues.length > 0) {
+      var lc = area.level==="DANGER"?"color:#dc2626":(area.level==="WARNING"?"color:#d97706":"");
+      html += '<div class="report-item"><strong>'+area.area+'</strong> <span style="font-size:10px;'+lc+'">'+area.level+'</span><br>'+issues.join('<br>')+'</div>';
+    }
+  });
+  if (!html) html = '<div class="report-item">No flagged issues.</div>';
+  rc.innerHTML = html;
+}
+
+function openAreaModal(idx) {
+  if (!allAreaData||!allAreaData.areas[idx]) return;
+  var area = allAreaData.areas[idx];
+  var allAreas = allAreaData.areas;
+  var factorKeys = Object.keys(area.all_factors);
+  var averages = {};
+  factorKeys.forEach(function(key) {
+    var sum=0; allAreas.forEach(function(a){sum+=(a.all_factors[key]?a.all_factors[key].score:0);});
+    averages[key]=sum/allAreas.length;
+  });
+  var slices = [];
+  factorKeys.forEach(function(key) {
+    var s=area.all_factors[key].score, avg=averages[key];
+    var excess=Math.max(0,s-avg);
+    var info=FACTOR_COLORS[key]||{bg:'#999',label:key};
+    var ag=AGENCY_MAP[key]||{name:'TBD',dept:''};
+    slices.push({key:key,label:info.label,color:info.bg,excess:Math.round(excess*10)/10,score:s,avg:Math.round(avg*10)/10,detail:area.all_factors[key].detail,source:area.all_factors[key].source,agency:ag});
+  });
+  slices.sort(function(a,b){return b.excess-a.excess;});
+  var totalExcess=slices.reduce(function(s,x){return s+x.excess;},0);
+  var useExcess=totalExcess>0;
+
+  var lc=area.level==="DANGER"?"status-danger":(area.level==="WARNING"?"status-warning":"status-normal");
+  document.getElementById("modalTitle").textContent=area.area;
+  document.getElementById("modalSubtitle").innerHTML='<span class="'+lc+'">'+area.level+'</span> — Score: '+area.overall_score+'/100 — Pop: '+(area.population||0).toLocaleString()+'<br><span style="font-size:10px;color:#888;">'+(useExcess?'Factors above average highlighted':'Factor breakdown')+'</span>';
+
+  var chartData=slices.map(function(s){return useExcess?Math.max(s.excess,0.5):s.score;});
+  var canvas=document.getElementById("modalChart");
+  if(modalChartInstance)modalChartInstance.destroy();
+  modalChartInstance=new Chart(canvas,{type:'doughnut',data:{labels:slices.map(function(s){return s.label;}),datasets:[{data:chartData,backgroundColor:slices.map(function(s){return s.color;}),borderWidth:2,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){var s=slices[ctx.dataIndex];return s.label+': '+s.score+' (avg '+s.avg+')';}}}} }});
+
+  var leg=document.getElementById("modalLegend"); leg.innerHTML="";
+  slices.forEach(function(s){
+    var item=document.createElement("div"); item.className="modal-legend-item";
+    var note=useExcess&&s.excess>0?'<div class="relative-note">+'+s.excess+' above avg ('+s.avg+') → '+s.agency.name+': '+s.agency.dept+'</div>':'<div style="font-size:10px;color:#4ade80;">At/below average</div>';
+    item.innerHTML='<div class="modal-legend-dot" style="background:'+s.color+';"></div><div class="modal-legend-text"><div class="factor-name">'+s.label+': '+s.score+'/100</div><div style="color:#666;font-size:10px;">'+s.detail+'</div>'+note+'<div style="color:#bbb;font-size:9px;">Source: '+s.source+'</div></div>';
+    leg.appendChild(item);
+  });
+  document.getElementById("areaModal").classList.add("active");
+}
+
+document.getElementById("modalClose").addEventListener("click",function(){document.getElementById("areaModal").classList.remove("active");});
+document.getElementById("areaModal").addEventListener("click",function(e){if(e.target===this)this.classList.remove("active");});
+
+fetchAreaRisk();
+setInterval(fetchAreaRisk, 10000);
+
+document.getElementById("btnReport").addEventListener("click", function(){
+  window.open("http://localhost:5001/daily_report?date="+new Date().toISOString().slice(0,10), "_blank");
+});
+
+(function loadDates(){
+  fetch("http://localhost:5001/history_dates").then(function(r){return r.json();}).then(function(d){
+    var c = document.getElementById("historyDates"); if(!c||!d.dates) return; c.innerHTML="";
+    d.dates.forEach(function(dt){
+      var row = document.createElement("div");
+      row.style.cssText="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;";
+      row.innerHTML = dt+' <span><a href="http://localhost:5001/daily_report?date='+dt+'" target="_blank" style="font-size:11px;margin-right:6px;">Report</a>'+
+        '<a href="http://localhost:5001/history_csv/'+dt+'" style="font-size:11px;">CSV</a></span>';
+      c.appendChild(row);
+    });
+  }).catch(function(){});
+})();
+setInterval(function(){document.getElementById("btnReport").click;},30000);
+</script>
 </body>
 </html>

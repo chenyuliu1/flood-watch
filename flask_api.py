@@ -1,0 +1,259 @@
+# flask_api.py - flood dashboard backend
+# pip install flask flask-cors
+
+from flask import Flask, jsonify, request, Response
+from flask_cors import CORS
+import csv, os, json
+from datetime import datetime, timedelta
+
+app = Flask(__name__)
+CORS(app)
+
+SENSOR_CSV = 'sensor_history.csv'
+RAINFALL_CSV = 'rainfall.csv'
+FLOOD_ZONES_CSV = 'flood_zones.csv'
+POPULATION_CSV = 'population.csv'
+
+WATER_WARNING = 1.5
+WATER_DANGER = 3.0
+RAIN_WARNING = 20.0
+RAIN_DANGER = 50.0
+
+def read_csv(path):
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding='utf-8') as f:
+        return list(csv.DictReader(f))
+
+def latest_sensor():
+    rows = read_csv(SENSOR_CSV)
+    return rows[-1] if rows else None
+
+def avg_rainfall_24h():
+    rows = read_csv(RAINFALL_CSV)
+    totals = {}
+    now = datetime.now()
+    for r in rows:
+        try:
+            d = datetime.strptime(r.get('date',''), '%Y-%m-%d')
+            if (now - d).days <= 1:
+                a = r.get('area','')
+                totals[a] = totals.get(a, 0) + float(r.get('rainfall_mm', 0))
+        except: pass
+    return sum(totals.values()) / len(totals) if totals else 0
+
+@app.route('/save', methods=['POST'])
+def save():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'no data'}), 400
+    ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    val, label = '', ''
+    for k, v in data.items():
+        try:
+            val = float(v); label = k; break
+        except: pass
+    if val == '' and data:
+        k = list(data.keys())[0]; val = data[k]; label = k
+    extra = json.dumps({k:v for k,v in data.items() if k != label}) if len(data) > 1 else ''
+    if not os.path.exists(SENSOR_CSV):
+        with open(SENSOR_CSV, 'w', newline='') as f:
+            f.write('timestamp,raw_value,label,extra_json\n')
+    with open(SENSOR_CSV, 'a', newline='') as f:
+        csv.writer(f).writerow([ts, val, label, extra])
+    return jsonify({'status': 'saved', 'timestamp': ts})
+
+@app.route('/data')
+def get_data():
+    return jsonify({
+        'sensor_history': read_csv(SENSOR_CSV),
+        'rainfall': read_csv(RAINFALL_CSV),
+        'flood_zones': read_csv(FLOOD_ZONES_CSV),
+        'population': read_csv(POPULATION_CSV),
+    })
+
+@app.route('/risk')
+def get_risk():
+    s = latest_sensor()
+    wl = float(s['raw_value']) if s else 0
+    rain = avg_rainfall_24h()
+    level = 'NORMAL'
+    reasons = []
+    if wl >= WATER_DANGER:
+        level = 'DANGER'; reasons.append('Water level above danger threshold')
+    elif wl >= WATER_WARNING:
+        level = 'WARNING'; reasons.append('Water level above warning threshold')
+    if rain >= RAIN_DANGER:
+        reasons.append('Heavy rainfall detected')
+    elif rain >= RAIN_WARNING:
+        reasons.append('Elevated rainfall')
+    if not reasons:
+        reasons.append('All factors within normal range')
+    return jsonify({
+        'level': level,
+        'factors': {'water_level_m': round(wl, 2), 'rainfall_24h_mm': round(rain, 1)},
+        'reasons': reasons
+    })
+
+@app.route('/risk_by_area')
+def risk_by_area():
+    zones = read_csv(FLOOD_ZONES_CSV)
+    pop = {p['area']: p for p in read_csv(POPULATION_CSV)}
+    rain_24h = {}
+    now = datetime.now()
+    for r in read_csv(RAINFALL_CSV):
+        try:
+            d = datetime.strptime(r['date'], '%Y-%m-%d')
+            if (now - d).days <= 1:
+                rain_24h[r['area']] = rain_24h.get(r['area'], 0) + float(r['rainfall_mm'])
+        except: pass
+    s = latest_sensor()
+    wl = float(s['raw_value']) if s else 0
+
+    weights = {'water_proximity': 0.15, 'flood_history': 0.20, 'drainage': 0.15,
+               'rainfall': 0.20, 'cald_vulnerability': 0.10, 'current_water_level': 0.20}
+    areas = []
+    for z in zones:
+        p = pop.get(z['area'], {})
+        elev = float(z.get('elevation_m', 20))
+        hist = z.get('flood_risk_historical', 'low').lower()
+        drain = z.get('drainage_capacity', 'medium').lower()
+        area_rain = rain_24h.get(z['area'], 0)
+        cald = float(p.get('cald_percentage', 0))
+        elderly = float(p.get('elderly_percentage', 0))
+        low_eng = float(p.get('low_english_percentage', 0))
+        need_asst = float(p.get('needs_assistance_percentage', 0))
+
+        f = {
+            'flood_history': {'score': {'high':85,'medium':50,'low':15}.get(hist,30),
+                'detail': f'Risk: {hist}, last flood: {z.get("last_flood_year","?")}', 'source': 'Melbourne Water'},
+            'drainage': {'score': {'low':80,'medium':45,'high':10}.get(drain,45),
+                'detail': f'Capacity: {drain}', 'source': 'Council'},
+            'water_proximity': {'score': max(0, min(100, int((25-elev)*5))),
+                'detail': f'Elevation {elev}m', 'source': 'Data Vic'},
+            'rainfall': {'score': min(100, int(area_rain*2)),
+                'detail': f'{area_rain:.1f}mm 24h', 'source': 'BOM'},
+            'cald_vulnerability': {'score': min(100, int(low_eng*1.5 + need_asst*1.5 + elderly*0.8 + cald*0.3)),
+                'detail': f'{cald}% CALD, {elderly}% elderly, {low_eng}% low English, {need_asst}% need assistance',
+                'source': 'ABS Census'},
+            'current_water_level': {'score': max(0, min(100, int((wl - elev*0.1)*20))),
+                'detail': f'Current: {wl}m', 'source': 'Sensor'},
+        }
+        overall = sum(f[k]['score'] * weights[k] for k in weights)
+        top = max(f.items(), key=lambda x: x[1]['score'])
+        level = 'DANGER' if overall >= 65 else ('WARNING' if overall >= 40 else 'NORMAL')
+        areas.append({
+            'area': z['area'], 'overall_score': round(overall,1), 'level': level,
+            'lat': float(z.get('lat', 0)), 'lng': float(z.get('lng', 0)),
+            'top_concern': {'factor': top[0].replace('_',' ').title(), 'score': top[1]['score'],
+                'detail': top[1]['detail'], 'source': top[1]['source']},
+            'all_factors': dict(sorted(f.items(), key=lambda x: -x[1]['score'])),
+            'population': int(p.get('total_population', 0))
+        })
+    areas.sort(key=lambda x: -x['overall_score'])
+    return jsonify({
+        'areas': areas,
+        'data_sources': ['Sensor','BOM','Melbourne Water','Council','Data Vic','ABS Census']
+    })
+
+@app.route('/clear_history', methods=['POST'])
+def clear():
+    with open(SENSOR_CSV, 'w', newline='') as f:
+        f.write('timestamp,raw_value,label,extra_json\n')
+    return jsonify({'status': 'cleared'})
+
+@app.route('/download_csv')
+def download_csv():
+    if not os.path.exists(SENSOR_CSV): return 'No data', 404
+    with open(SENSOR_CSV) as f: data = f.read()
+    return Response(data, mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=sensor_{datetime.now().strftime("%Y%m%d")}.csv'})
+
+@app.route('/history_dates')
+def history_dates():
+    dates = set()
+    for r in read_csv(SENSOR_CSV):
+        ts = r.get('timestamp','')
+        if len(ts) >= 10: dates.add(ts[:10])
+    return jsonify({'dates': sorted(dates, reverse=True)})
+
+@app.route('/history_csv/<date>')
+def history_csv(date):
+    rows = [r for r in read_csv(SENSOR_CSV) if r.get('timestamp','').startswith(date)]
+    lines = ['timestamp,raw_value,label,extra_json']
+    for r in rows:
+        lines.append(f"{r.get('timestamp','')},{r.get('raw_value','')},{r.get('label','')},{r.get('extra_json','')}")
+    return Response('\n'.join(lines), mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=sensor_{date}.csv'})
+
+@app.route('/daily_report')
+def daily_report():
+    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    rows = [r for r in read_csv(SENSOR_CSV) if r.get('timestamp','').startswith(date)]
+    vals = []
+    for r in rows:
+        try: vals.append(float(r['raw_value']))
+        except: pass
+    hi = round(max(vals),2) if vals else 0
+    lo = round(min(vals),2) if vals else 0
+    avg = round(sum(vals)/len(vals),2) if vals else 0
+    labels = [r.get('timestamp','').split(' ')[-1][:5] for r in rows]
+    chart_vals = [float(r.get('raw_value',0)) for r in rows if r.get('raw_value')]
+
+    issues = ''
+    zones = read_csv(FLOOD_ZONES_CSV)
+    pop = read_csv(POPULATION_CSV)
+    rain = [r for r in read_csv(RAINFALL_CSV) if r.get('date','') == date]
+    for z in zones:
+        a = z.get('area','')
+        probs = []
+        if z.get('drainage_capacity','').lower() == 'low':
+            probs.append(('<span style="background:#d97706;color:#fff;padding:1px 5px;font-size:10px;border-radius:2px;">Council</span>', 'Poor drainage'))
+        if z.get('flood_risk_historical','').lower() == 'high':
+            probs.append(('<span style="background:#2563eb;color:#fff;padding:1px 5px;font-size:10px;border-radius:2px;">Melbourne Water</span>', 'High flood risk'))
+        for r in rain:
+            if r.get('area') == a:
+                try:
+                    mm = float(r.get('rainfall_mm',0))
+                    if mm > 15: probs.append(('<span style="background:#dc2626;color:#fff;padding:1px 5px;font-size:10px;border-radius:2px;">SES</span>', f'{mm}mm rainfall'))
+                except: pass
+        for p in pop:
+            if p.get('area') == a:
+                try:
+                    le = float(p.get('low_english_percentage',0))
+                    if le > 15: probs.append(('<span style="background:#dc2626;color:#fff;padding:1px 5px;font-size:10px;border-radius:2px;">SES</span>', f'{le}% low English'))
+                except: pass
+        if probs:
+            issues += f'<div style="margin-bottom:10px;"><strong>{a}</strong><br>'
+            for tag, desc in probs: issues += f'{tag} {desc}<br>'
+            issues += '</div>'
+    if not issues: issues = '<p>No issues flagged.</p>'
+
+    return f'''<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Report — {date}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>body{{font-family:sans-serif;padding:24px;max-width:800px;margin:0 auto}}
+h1{{font-size:18px;border-bottom:2px solid #222;padding-bottom:6px}}
+.stats{{display:flex;gap:12px;margin:12px 0}}.sb{{flex:1;border:1px solid #ddd;padding:10px;text-align:center}}
+.sb .v{{font-size:22px;font-weight:bold}}.sb .l{{font-size:10px;color:#666}}</style></head><body>
+<h1>Maribyrnong Flood Watch — {date}</h1>
+<div class="stats">
+<div class="sb"><div class="v" style="color:#dc2626">{hi}m</div><div class="l">Highest</div></div>
+<div class="sb"><div class="v" style="color:#2563eb">{lo}m</div><div class="l">Lowest</div></div>
+<div class="sb"><div class="v">{avg}m</div><div class="l">Average</div></div>
+<div class="sb"><div class="v">{len(rows)}</div><div class="l">Readings</div></div></div>
+<div style="height:220px"><canvas id="c"></canvas></div>
+<h2 style="font-size:14px;margin-top:20px;">Flagged Issues</h2>{issues}
+<script>new Chart(document.getElementById("c"),{{type:"line",data:{{labels:{json.dumps(labels)},
+datasets:[{{label:"Water Level",data:{json.dumps(chart_vals)},borderColor:"#2563eb",backgroundColor:"rgba(37,99,235,0.1)",
+borderWidth:2,pointRadius:1,fill:true,tension:0.2}},
+{{label:"Warning",data:{json.dumps([1.5]*len(labels))},borderColor:"#f59e0b",borderWidth:1,borderDash:[6,6],pointRadius:0,fill:false}},
+{{label:"Danger",data:{json.dumps([3.0]*len(labels))},borderColor:"#dc2626",borderWidth:1,borderDash:[6,6],pointRadius:0,fill:false}}]}},
+options:{{responsive:true,maintainAspectRatio:false,scales:{{y:{{suggestedMin:0,suggestedMax:4}}}}}}}})</script>
+</body></html>'''
+
+if __name__ == '__main__':
+    if not os.path.exists(SENSOR_CSV):
+        with open(SENSOR_CSV, 'w', newline='') as f:
+            f.write('timestamp,raw_value,label,extra_json\n')
+    app.run(host='0.0.0.0', port=5001, debug=True)
