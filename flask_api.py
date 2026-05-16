@@ -10,6 +10,8 @@ app = Flask(__name__)
 CORS(app)
 
 SENSOR_CSV = 'sensor_history.csv'
+SENSOR_COLUMNS = ['timestamp','water_level','rate_m_min','raw_distance','arduino_state','yellow_led','red_led','buzzer']
+SENSOR_HEADER = ','.join(SENSOR_COLUMNS) + '\n'
 RAINFALL_CSV = 'rainfall.csv'
 FLOOD_ZONES_CSV = 'flood_zones.csv'
 POPULATION_CSV = 'population.csv'
@@ -48,19 +50,21 @@ def save():
     if not data:
         return jsonify({'error': 'no data'}), 400
     ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    val, label = '', ''
-    for k, v in data.items():
-        try:
-            val = float(v); label = k; break
-        except: pass
-    if val == '' and data:
-        k = list(data.keys())[0]; val = data[k]; label = k
-    extra = json.dumps({k:v for k,v in data.items() if k != label}) if len(data) > 1 else ''
+    row = {
+        'timestamp': ts,
+        'water_level': data.get('water_level', ''),
+        'rate_m_min': data.get('rate_m_min', ''),
+        'raw_distance': data.get('raw_distance', ''),
+        'arduino_state': data.get('arduino_state', ''),
+        'yellow_led': data.get('yellow_led', ''),
+        'red_led': data.get('red_led', ''),
+        'buzzer': data.get('buzzer', ''),
+    }
     if not os.path.exists(SENSOR_CSV):
         with open(SENSOR_CSV, 'w', newline='') as f:
-            f.write('timestamp,raw_value,label,extra_json\n')
+            f.write(SENSOR_HEADER)
     with open(SENSOR_CSV, 'a', newline='') as f:
-        csv.writer(f).writerow([ts, val, label, extra])
+        csv.writer(f).writerow([row[c] for c in SENSOR_COLUMNS])
     return jsonify({'status': 'saved', 'timestamp': ts})
 
 @app.route('/data')
@@ -75,7 +79,8 @@ def get_data():
 @app.route('/risk')
 def get_risk():
     s = latest_sensor()
-    wl = float(s['raw_value']) if s else 0
+    wl = float(s['water_level']) if s and s.get('water_level') else 0
+    wl_rate = float(s['rate_m_min']) if s and s.get('rate_m_min') else 0
     rain_24h = {}
     now = datetime.now()
     for r in read_csv(RAINFALL_CSV):
@@ -120,9 +125,15 @@ def get_risk():
             worst_area = z['area']
             all_scores = scores
 
+    # rate boost: fast-rising water pushes score up for early warning
+    if wl_rate > 0.5: worst_score *= 1.3
+    elif wl_rate > 0.2: worst_score *= 1.15
+
     level = 'DANGER' if worst_score >= 65 else ('WARNING' if worst_score >= 40 else 'NORMAL')
 
     reasons = []
+    if wl_rate > 0.2:
+        reasons.append(f'Water level rising rapidly ({wl_rate:.2f} m/min)')
     if all_scores.get('current_water_level', 0) >= 60:
         reasons.append(f'Water level {wl:.2f}m above threshold')
     elif all_scores.get('current_water_level', 0) >= 30:
@@ -142,7 +153,7 @@ def get_risk():
 
     return jsonify({
         'level': level,
-        'factors': {'water_level_m': round(wl, 2), 'rainfall_24h_mm': round(avg_rain, 1)},
+        'factors': {'water_level_m': round(wl, 2), 'rate_m_min': round(wl_rate, 2), 'rainfall_24h_mm': round(avg_rain, 1)},
         'scores': {k: all_scores.get(k, 0) for k in weights},
         'composite': round(worst_score, 1),
         'worst_area': worst_area,
@@ -163,7 +174,8 @@ def risk_by_area():
                 rain_24h[r['area']] = rain_24h.get(r['area'], 0) + float(r['rainfall_mm'])
         except: pass
     s = latest_sensor()
-    wl = float(s['raw_value']) if s else 0
+    wl = float(s['water_level']) if s and s.get('water_level') else 0
+    wl_rate = float(s['rate_m_min']) if s and s.get('rate_m_min') else 0
 
     weights = {'water_proximity': 0.15, 'flood_history': 0.20, 'drainage': 0.15,
                'rainfall': 0.20, 'cald_vulnerability': 0.10, 'current_water_level': 0.20}
@@ -195,6 +207,8 @@ def risk_by_area():
                 'detail': f'Current: {wl}m', 'source': 'Sensor'},
         }
         overall = sum(f[k]['score'] * weights[k] for k in weights)
+        if wl_rate > 0.5: overall *= 1.3
+        elif wl_rate > 0.2: overall *= 1.15
         top = max(f.items(), key=lambda x: x[1]['score'])
         level = 'DANGER' if overall >= 65 else ('WARNING' if overall >= 40 else 'NORMAL')
         areas.append({
@@ -214,7 +228,7 @@ def risk_by_area():
 @app.route('/clear_history', methods=['POST'])
 def clear():
     with open(SENSOR_CSV, 'w', newline='') as f:
-        f.write('timestamp,raw_value,label,extra_json\n')
+        f.write(SENSOR_HEADER)
     return jsonify({'status': 'cleared'})
 
 @app.route('/download_csv')
@@ -235,9 +249,9 @@ def history_dates():
 @app.route('/history_csv/<date>')
 def history_csv(date):
     rows = [r for r in read_csv(SENSOR_CSV) if r.get('timestamp','').startswith(date)]
-    lines = ['timestamp,raw_value,label,extra_json']
+    lines = [','.join(SENSOR_COLUMNS)]
     for r in rows:
-        lines.append(f"{r.get('timestamp','')},{r.get('raw_value','')},{r.get('label','')},{r.get('extra_json','')}")
+        lines.append(','.join(r.get(c, '') for c in SENSOR_COLUMNS))
     return Response('\n'.join(lines), mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename=sensor_{date}.csv'})
 
@@ -247,13 +261,13 @@ def daily_report():
     rows = [r for r in read_csv(SENSOR_CSV) if r.get('timestamp','').startswith(date)]
     vals = []
     for r in rows:
-        try: vals.append(float(r['raw_value']))
+        try: vals.append(float(r['water_level']))
         except: pass
     hi = round(max(vals),2) if vals else 0
     lo = round(min(vals),2) if vals else 0
     avg = round(sum(vals)/len(vals),2) if vals else 0
     labels = [r.get('timestamp','').split(' ')[-1][:5] for r in rows]
-    chart_vals = [float(r.get('raw_value',0)) for r in rows if r.get('raw_value')]
+    chart_vals = [float(r.get('water_level',0)) for r in rows if r.get('water_level')]
 
     issues = ''
     zones = read_csv(FLOOD_ZONES_CSV)
@@ -310,5 +324,5 @@ options:{{responsive:true,maintainAspectRatio:false,scales:{{y:{{suggestedMin:0,
 if __name__ == '__main__':
     if not os.path.exists(SENSOR_CSV):
         with open(SENSOR_CSV, 'w', newline='') as f:
-            f.write('timestamp,raw_value,label,extra_json\n')
+            f.write(SENSOR_HEADER)
     app.run(host='0.0.0.0', port=5001, debug=True)
