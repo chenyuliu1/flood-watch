@@ -1,4 +1,14 @@
 date,area,rainfall_mm
+2026-05-16,Footscray,18.5
+2026-05-16,Maribyrnong,24.2
+2026-05-16,Braybrook,8.3
+2026-05-16,Maidstone,12.1
+2026-05-16,West Footscray,5.4
+2026-05-15,Footscray,14.8
+2026-05-15,Maribyrnong,19.6
+2026-05-15,Braybrook,6.2
+2026-05-15,Maidstone,9.8
+2026-05-15,West Footscray,4.1
 2026-05-14,Footscray,22.0
 2026-05-14,Maribyrnong,20.8
 2026-05-14,Braybrook,4.9
@@ -14,23 +24,3 @@ date,area,rainfall_mm
 2026-05-12,Braybrook,3.4
 2026-05-12,Maidstone,4.9
 2026-05-12,West Footscray,3.0
-2026-05-11,Footscray,4.9
-2026-05-11,Maribyrnong,0.0
-2026-05-11,Braybrook,6.8
-2026-05-11,Maidstone,6.1
-2026-05-11,West Footscray,0.8
-2026-05-10,Footscray,3.3
-2026-05-10,Maribyrnong,3.4
-2026-05-10,Braybrook,3.3
-2026-05-10,Maidstone,6.9
-2026-05-10,West Footscray,6.2
-2026-05-09,Footscray,7.4
-2026-05-09,Maribyrnong,6.7
-2026-05-09,Braybrook,3.8
-2026-05-09,Maidstone,1.9
-2026-05-09,West Footscray,6.9
-2026-05-08,Footscray,4.2
-2026-05-08,Maribyrnong,5.6
-2026-05-08,Braybrook,5.9
-2026-05-08,Maidstone,4.4
-2026-05-08,West Footscray,2.9

@@ -4,7 +4,7 @@
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 import csv, os, json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -91,7 +91,7 @@ def get_risk():
     weights = {'water_proximity': 0.15, 'flood_history': 0.20, 'drainage': 0.15,
                'rainfall': 0.20, 'cald_vulnerability': 0.10, 'current_water_level': 0.20}
 
-    # Calculate per-area scores with same logic as /risk_by_area, take worst
+    # same scoring as /risk_by_area, take worst area
     worst_score = 0
     worst_area = ''
     all_scores = {}

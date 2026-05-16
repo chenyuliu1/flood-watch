@@ -1,6 +1,6 @@
-area,flood_risk_historical,drainage_capacity,elevation_m,last_flood_year
-Maribyrnong Reserve,high,low,8.5,2022
-Footscray,high,medium,12.0,2022
-Braybrook,medium,medium,15.3,2011
-Maidstone,medium,low,10.1,2022
-West Footscray,low,high,22.7,1993
+area,flood_risk_historical,drainage_capacity,elevation_m,last_flood_year,lat,lng
+Maribyrnong,high,low,8.5,2022,-37.7743,144.8893
+Footscray,high,medium,12.0,2022,-37.7998,144.8992
+Braybrook,medium,medium,15.3,2011,-37.7922,144.8572
+Maidstone,medium,low,10.1,2022,-37.7821,144.8741
+West Footscray,low,high,22.7,1993,-37.7983,144.8718

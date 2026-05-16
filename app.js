@@ -107,36 +107,51 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 
-// buffer readings, save averaged to flask every 5s
 var readingBuffer = [];
-var SAVE_INTERVAL = 5000; // Save to Flask every 5 seconds
+var SAVE_INTERVAL = 5000;
 
-// Start the periodic save timer
 setInterval(flushBufferToFlask, SAVE_INTERVAL);
 
-function bufferReading(value, label) {
-  readingBuffer.push({ value: value, label: label || "water_level" });
+function bufferReading(value, label, extras) {
+  readingBuffer.push({ value: value, label: label || "water_level", extras: extras || {} });
 }
 
 function flushBufferToFlask() {
   if (readingBuffer.length === 0) return;
 
-  
   var sum = 0;
+  var rateSum = 0;
+  var hasRate = false;
   var label = readingBuffer[0].label;
   for (var i = 0; i < readingBuffer.length; i++) {
     sum += readingBuffer[i].value;
+    if (readingBuffer[i].extras && readingBuffer[i].extras.rate_m_min !== undefined) {
+      rateSum += readingBuffer[i].extras.rate_m_min;
+      hasRate = true;
+    }
   }
   var avg = Math.round((sum / readingBuffer.length) * 100) / 100;
+  var avgRate = hasRate ? Math.round((rateSum / readingBuffer.length) * 100) / 100 : null;
   var count = readingBuffer.length;
+  var latest = readingBuffer[readingBuffer.length - 1];
 
-  
   readingBuffer = [];
 
-  // Send the averaged value to Flask
   var payload = {};
   payload[label] = avg;
   payload["samples_averaged"] = count;
+  if (avgRate !== null) payload["rate_m_min"] = avgRate;
+  if (latest.extras) {
+    if (latest.extras.raw_distance !== undefined) payload["raw_distance"] = latest.extras.raw_distance;
+    if (latest.extras.level_original !== undefined) payload["level_original"] = latest.extras.level_original;
+    if (latest.extras.rate_original !== undefined) payload["rate_original"] = latest.extras.rate_original;
+    if (latest.extras.state) payload["arduino_state"] = latest.extras.state;
+    if (latest.extras.button !== undefined) payload["button"] = latest.extras.button;
+    if (latest.extras.acknowledged !== undefined) payload["acknowledged"] = latest.extras.acknowledged;
+    if (latest.extras.yellow_led !== undefined) payload["yellow_led"] = latest.extras.yellow_led;
+    if (latest.extras.red_led !== undefined) payload["red_led"] = latest.extras.red_led;
+    if (latest.extras.buzzer !== undefined) payload["buzzer"] = latest.extras.buzzer;
+  }
 
   fetch(FLASK_URL + "/save", {
     method: "POST",
@@ -170,7 +185,7 @@ function fetchRiskLevel() {
       if (elRiskReasons) {
         elRiskReasons.textContent = data.reasons.join("; ");
       }
-      // Also update water level display if available
+      // update display
       var elWater = document.getElementById("currentWaterLevel");
       if (elWater && data.factors) {
         elWater.textContent = data.factors.water_level_m.toFixed(2) + " m";
@@ -185,20 +200,54 @@ function fetchRiskLevel() {
     });
 }
 
+// mm to display scale (15mm -> 1.5m warning, 30mm -> 3.0m danger)
+var LEVEL_UNIT_TO_METRES = 0.1;
+
 function parseSerialLine(line) {
   line = line.trim();
   if (!line) return null;
 
-  // Format: "label:value" or "label=value"
-  var colonMatch = line.match(/^([A-Za-z_]+)\s*[:=]\s*(-?\d+\.?\d*)/);
-  if (colonMatch) {
-    return { value: parseFloat(colonMatch[2]), label: colonMatch[1] };
+  // skip header
+  if (line.toLowerCase().indexOf("raw_value") === 0) return null;
+
+  // jackie's csv format: raw_value,level_ml,rate_ml_min,state,button,acknowledged,yellow_led,red_led,buzzer
+  var parts = line.split(",");
+  if (parts.length >= 9) {
+    var raw = parseFloat(parts[0]);
+    var level = parseFloat(parts[1]);
+    var rate = parseFloat(parts[2]);
+    if (!isNaN(level)) {
+      var levelM = Math.round(level * LEVEL_UNIT_TO_METRES * 100) / 100;
+      var rateM = Math.round(rate * LEVEL_UNIT_TO_METRES * 100) / 100;
+      return {
+        value: levelM,
+        label: "water_level",
+        extras: {
+          raw_distance: raw,
+          level_original: level,
+          rate_original: rate,
+          rate_m_min: rateM,
+          state: (parts[3] || "").trim(),
+          button: parseInt(parts[4]) || 0,
+          acknowledged: parseInt(parts[5]) || 0,
+          yellow_led: parseInt(parts[6]) || 0,
+          red_led: parseInt(parts[7]) || 0,
+          buzzer: parseInt(parts[8]) || 0
+        }
+      };
+    }
   }
 
-  // Format: comma-separated numbers (take first)
-  var commaMatch = line.match(/^(-?\d+\.?\d*)/);
-  if (commaMatch) {
-    return { value: parseFloat(commaMatch[1]), label: "sensor" };
+  // fallback: label:value or label=value
+  var colonMatch = line.match(/^([A-Za-z_]+)\s*[:=]\s*(-?\d+\.?\d*)/);
+  if (colonMatch) {
+    return { value: parseFloat(colonMatch[2]), label: colonMatch[1], extras: {} };
+  }
+
+  // fallback: plain number
+  var numMatch = line.match(/^(-?\d+\.?\d*)/);
+  if (numMatch) {
+    return { value: parseFloat(numMatch[1]), label: "sensor", extras: {} };
   }
 
   return null;
@@ -447,7 +496,6 @@ async function connectToArduino() {
       var line = (result.value || "").trim();
       if (!line) continue;
 
-      // Use flexible parser instead of just Number()
       var parsed = parseSerialLine(line);
       if (!parsed) {
         invalidLines += 1;
@@ -460,11 +508,8 @@ async function connectToArduino() {
       if (elLatest) elLatest.textContent = String(parsed.value);
       setConnStatus("Reading data");
 
-      // chart
       appendPoint(parsed.value);
-
-      // buffer
-      bufferReading(parsed.value, parsed.label);
+      bufferReading(parsed.value, parsed.label, parsed.extras);
     }
   } catch (err) {
     if (keepReading) {
@@ -475,9 +520,7 @@ async function connectToArduino() {
   }
 }
 
-// SIMULATION MODE (for development without Arduino)
-// Pretends to be an Arduino sending water level readings
-
+// sim mode for testing without arduino
 var simInterval = null;
 var simWaterLevel = 1.0;
 var simRising = true;
