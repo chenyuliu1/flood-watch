@@ -76,22 +76,77 @@ def get_data():
 def get_risk():
     s = latest_sensor()
     wl = float(s['raw_value']) if s else 0
-    rain = avg_rainfall_24h()
-    level = 'NORMAL'
+    rain_24h = {}
+    now = datetime.now()
+    for r in read_csv(RAINFALL_CSV):
+        try:
+            d = datetime.strptime(r['date'], '%Y-%m-%d')
+            if (now - d).days <= 1:
+                rain_24h[r['area']] = rain_24h.get(r['area'], 0) + float(r['rainfall_mm'])
+        except: pass
+    avg_rain = sum(rain_24h.values()) / len(rain_24h) if rain_24h else 0
+
+    zones = read_csv(FLOOD_ZONES_CSV)
+    pop = {p['area']: p for p in read_csv(POPULATION_CSV)}
+    weights = {'water_proximity': 0.15, 'flood_history': 0.20, 'drainage': 0.15,
+               'rainfall': 0.20, 'cald_vulnerability': 0.10, 'current_water_level': 0.20}
+
+    # Calculate per-area scores with same logic as /risk_by_area, take worst
+    worst_score = 0
+    worst_area = ''
+    all_scores = {}
+    for z in zones:
+        p = pop.get(z['area'], {})
+        elev = float(z.get('elevation_m', 20))
+        hist = z.get('flood_risk_historical', 'low').lower()
+        drain = z.get('drainage_capacity', 'medium').lower()
+        area_rain = rain_24h.get(z['area'], 0)
+        low_eng = float(p.get('low_english_percentage', 0))
+        need_asst = float(p.get('needs_assistance_percentage', 0))
+        elderly = float(p.get('elderly_percentage', 0))
+        cald = float(p.get('cald_percentage', 0))
+
+        scores = {
+            'water_proximity': max(0, min(100, int((25 - elev) * 5))),
+            'flood_history': {'high': 85, 'medium': 50, 'low': 15}.get(hist, 30),
+            'drainage': {'low': 80, 'medium': 45, 'high': 10}.get(drain, 45),
+            'rainfall': min(100, int(area_rain * 2)),
+            'cald_vulnerability': min(100, int(low_eng * 1.5 + need_asst * 1.5 + elderly * 0.8 + cald * 0.3)),
+            'current_water_level': max(0, min(100, int((wl - elev * 0.1) * 20))),
+        }
+        overall = sum(scores[k] * weights[k] for k in weights)
+        if overall > worst_score:
+            worst_score = overall
+            worst_area = z['area']
+            all_scores = scores
+
+    level = 'DANGER' if worst_score >= 65 else ('WARNING' if worst_score >= 40 else 'NORMAL')
+
     reasons = []
-    if wl >= WATER_DANGER:
-        level = 'DANGER'; reasons.append('Water level above danger threshold')
-    elif wl >= WATER_WARNING:
-        level = 'WARNING'; reasons.append('Water level above warning threshold')
-    if rain >= RAIN_DANGER:
-        reasons.append('Heavy rainfall detected')
-    elif rain >= RAIN_WARNING:
-        reasons.append('Elevated rainfall')
+    if all_scores.get('current_water_level', 0) >= 60:
+        reasons.append(f'Water level {wl:.2f}m above threshold')
+    elif all_scores.get('current_water_level', 0) >= 30:
+        reasons.append(f'Water level {wl:.2f}m approaching threshold')
+    if all_scores.get('rainfall', 0) >= 60:
+        reasons.append(f'Heavy rainfall ({avg_rain:.1f}mm/24h)')
+    elif all_scores.get('rainfall', 0) >= 30:
+        reasons.append(f'Elevated rainfall ({avg_rain:.1f}mm/24h)')
+    if all_scores.get('flood_history', 0) >= 60:
+        reasons.append('Area has high historical flood risk')
+    if all_scores.get('drainage', 0) >= 60:
+        reasons.append('Poor drainage capacity')
+    if all_scores.get('cald_vulnerability', 0) >= 60:
+        reasons.append('High community vulnerability')
     if not reasons:
         reasons.append('All factors within normal range')
+
     return jsonify({
         'level': level,
-        'factors': {'water_level_m': round(wl, 2), 'rainfall_24h_mm': round(rain, 1)},
+        'factors': {'water_level_m': round(wl, 2), 'rainfall_24h_mm': round(avg_rain, 1)},
+        'scores': {k: all_scores.get(k, 0) for k in weights},
+        'composite': round(worst_score, 1),
+        'worst_area': worst_area,
+        'weights': weights,
         'reasons': reasons
     })
 

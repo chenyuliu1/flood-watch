@@ -107,9 +107,9 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 
-// buffer readings, save averaged to flask every 10s
+// buffer readings, save averaged to flask every 5s
 var readingBuffer = [];
-var SAVE_INTERVAL = 10000; // Save to Flask every 10 seconds
+var SAVE_INTERVAL = 5000; // Save to Flask every 5 seconds
 
 // Start the periodic save timer
 setInterval(flushBufferToFlask, SAVE_INTERVAL);
