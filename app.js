@@ -201,7 +201,7 @@ function fetchRiskLevel() {
 }
 
 // mm to display scale (15mm -> 1.5m warning, 30mm -> 3.0m danger)
-var LEVEL_UNIT_TO_METRES = 0.1;
+var LEVEL_UNIT_TO_METRES = 0.005;
 
 function parseSerialLine(line) {
   line = line.trim();
