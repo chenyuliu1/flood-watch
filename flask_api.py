@@ -277,48 +277,68 @@ def daily_report():
         a = z.get('area','')
         probs = []
         if z.get('drainage_capacity','').lower() == 'low':
-            probs.append(('<span style="background:#d97706;color:#fff;padding:1px 5px;font-size:10px;border-radius:2px;">Council</span>', 'Poor drainage'))
+            probs.append(('<span class="tag tag-council">Council</span>', 'Poor drainage'))
         if z.get('flood_risk_historical','').lower() == 'high':
-            probs.append(('<span style="background:#2563eb;color:#fff;padding:1px 5px;font-size:10px;border-radius:2px;">Melbourne Water</span>', 'High flood risk'))
+            probs.append(('<span class="tag tag-mw">Melbourne Water</span>', 'High flood risk'))
         for r in rain:
             if r.get('area') == a:
                 try:
                     mm = float(r.get('rainfall_mm',0))
-                    if mm > 15: probs.append(('<span style="background:#dc2626;color:#fff;padding:1px 5px;font-size:10px;border-radius:2px;">SES</span>', f'{mm}mm rainfall'))
+                    if mm > 15: probs.append(('<span class="tag tag-ses">SES</span>', f'{mm}mm rainfall'))
                 except: pass
         for p in pop:
             if p.get('area') == a:
                 try:
                     le = float(p.get('low_english_percentage',0))
-                    if le > 15: probs.append(('<span style="background:#dc2626;color:#fff;padding:1px 5px;font-size:10px;border-radius:2px;">SES</span>', f'{le}% low English'))
+                    if le > 15: probs.append(('<span class="tag tag-ses">SES</span>', f'{le}% low English'))
                 except: pass
         if probs:
-            issues += f'<div style="margin-bottom:10px;"><strong>{a}</strong><br>'
+            issues += f'<div class="issue-block"><strong>{a}</strong><br>'
             for tag, desc in probs: issues += f'{tag} {desc}<br>'
             issues += '</div>'
-    if not issues: issues = '<p>No issues flagged.</p>'
+    if not issues: issues = '<div class="issue-block" style="color:var(--ink-3);">No issues flagged.</div>'
 
-    return f'''<!DOCTYPE html><html><head><meta charset="UTF-8">
+    return f'''<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Report — {date}</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Roboto:wght@300;400;500&family=PT+Mono&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<style>body{{font-family:sans-serif;padding:24px;max-width:800px;margin:0 auto}}
-h1{{font-size:18px;border-bottom:2px solid #222;padding-bottom:6px}}
-.stats{{display:flex;gap:12px;margin:12px 0}}.sb{{flex:1;border:1px solid #ddd;padding:10px;text-align:center}}
-.sb .v{{font-size:22px;font-weight:bold}}.sb .l{{font-size:10px;color:#666}}</style></head><body>
-<h1>Maribyrnong Flood Watch — {date}</h1>
+<style>
+:root{{--ink:#111827;--ink-2:#4b5563;--ink-3:#9ca3af;--secondary:#3b4f82;--danger:#DC2626;--warning:#D97706;--success:#16A34A;--surface:#FFFFFF;--paper:#f7f6f3;--paper-deep:#edebe6;--border:#e5e7eb;--border-lt:#f3f4f6}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Roboto',sans-serif;font-size:14px;color:var(--ink);background:var(--paper);padding:32px;max-width:800px;margin:0 auto;line-height:1.55;
+  background-image:url("data:image/svg+xml,%3Csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.022'/%3E%3C/svg%3E")}}
+h1{{font-family:'Montserrat',sans-serif;font-size:20px;font-weight:700;letter-spacing:-0.02em;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:4px}}
+.date-sub{{font-size:12px;color:var(--ink-3);margin-bottom:20px}}
+.stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0 20px}}
+.sb{{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:14px 12px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.04)}}
+.sb .v{{font-family:'PT Mono',monospace;font-size:22px;font-weight:400}}
+.sb .l{{font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.05em;margin-top:4px}}
+.chart-wrap{{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);margin-bottom:20px}}
+.chart-wrap h2{{font-family:'Montserrat',sans-serif;font-size:14px;font-weight:600;margin-bottom:10px}}
+h2.section-h{{font-family:'Montserrat',sans-serif;font-size:14px;font-weight:600;margin:20px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}}
+.issue-block{{margin-bottom:12px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px}}
+.issue-block strong{{font-size:14px}}
+.tag{{display:inline-block;font-family:'Montserrat',sans-serif;font-size:9px;font-weight:600;padding:2px 7px;border-radius:3px;color:#fff;margin-right:3px;letter-spacing:0.03em;text-transform:uppercase}}
+.tag-council{{background:var(--warning)}}.tag-mw{{background:var(--secondary)}}.tag-ses{{background:var(--danger)}}.tag-bom{{background:#0f766e}}
+.footer{{margin-top:24px;padding-top:12px;border-top:1px solid var(--border-lt);font-size:11px;color:var(--ink-3)}}
+</style></head><body>
+<h1>Maribyrnong Flood Watch</h1>
+<div class="date-sub">Daily Report — {date}</div>
 <div class="stats">
-<div class="sb"><div class="v" style="color:#dc2626">{hi}m</div><div class="l">Highest</div></div>
-<div class="sb"><div class="v" style="color:#2563eb">{lo}m</div><div class="l">Lowest</div></div>
+<div class="sb"><div class="v" style="color:var(--danger)">{hi}m</div><div class="l">Highest</div></div>
+<div class="sb"><div class="v" style="color:var(--secondary)">{lo}m</div><div class="l">Lowest</div></div>
 <div class="sb"><div class="v">{avg}m</div><div class="l">Average</div></div>
 <div class="sb"><div class="v">{len(rows)}</div><div class="l">Readings</div></div></div>
-<div style="height:220px"><canvas id="c"></canvas></div>
-<h2 style="font-size:14px;margin-top:20px;">Flagged Issues</h2>{issues}
+<div class="chart-wrap"><h2>Water Level — {date}</h2><div style="height:220px"><canvas id="c"></canvas></div></div>
+<h2 class="section-h">Flagged Issues</h2>{issues}
+<div class="footer">Generated by Maribyrnong Flood Watch. Data sources: Sensor, BOM, Melbourne Water, Council, ABS Census.</div>
 <script>new Chart(document.getElementById("c"),{{type:"line",data:{{labels:{json.dumps(labels)},
-datasets:[{{label:"Water Level",data:{json.dumps(chart_vals)},borderColor:"#2563eb",backgroundColor:"rgba(37,99,235,0.1)",
+datasets:[{{label:"Water Level",data:{json.dumps(chart_vals)},borderColor:"#3b4f82",backgroundColor:"rgba(59,79,130,0.08)",
 borderWidth:2,pointRadius:1,fill:true,tension:0.2}},
-{{label:"Warning",data:{json.dumps([1.5]*len(labels))},borderColor:"#f59e0b",borderWidth:1,borderDash:[6,6],pointRadius:0,fill:false}},
-{{label:"Danger",data:{json.dumps([3.0]*len(labels))},borderColor:"#dc2626",borderWidth:1,borderDash:[6,6],pointRadius:0,fill:false}}]}},
-options:{{responsive:true,maintainAspectRatio:false,scales:{{y:{{suggestedMin:0,suggestedMax:4}}}}}}}})</script>
+{{label:"Warning",data:{json.dumps([1.5]*len(labels))},borderColor:"#D97706",borderWidth:1,borderDash:[6,6],pointRadius:0,fill:false}},
+{{label:"Danger",data:{json.dumps([3.0]*len(labels))},borderColor:"#DC2626",borderWidth:1,borderDash:[6,6],pointRadius:0,fill:false}}]}},
+options:{{responsive:true,maintainAspectRatio:false,plugins:{{legend:{{labels:{{font:{{family:"Roboto",size:11}}}}}}}},scales:{{y:{{suggestedMin:0,suggestedMax:4}}}}}}}});</script>
 </body></html>'''
 
 if __name__ == '__main__':
